@@ -192,246 +192,35 @@ kubectl get pods -A \
   -o custom-columns='NAMESPACE:.metadata.namespace,POD:.metadata.name,IMAGE:.spec.containers[*].image'
 ```
 
-## GitHub Actions에서 ECR Push 설정
+## CI/CD 설정
 
-`.github/workflows/ci.yml`은 다음 조건으로 동작합니다.
+`.github/workflows/ci.yml`은 `main` Push마다 테스트 → 멀티플랫폼 이미지 빌드 →
+ECR Push(Commit SHA 태그) → `my-k8s-manifests`의 이미지 태그 갱신을 수행합니다.
+Argo CD가 그 변경을 감지해 EKS에 배포합니다.
 
-- `main` push: AWS OIDC Role을 사용하여 ECR에 이미지 Push
-
-GitHub 저장소의 `Settings → Secrets and variables → Actions`에 다음 Secret을
-등록해야 합니다.
-
-```text
-AWS_GITHUB_ACTIONS_ROLE_ARN=arn:aws:iam::637423638906:role/<GitHubActions용Role>
-```
-
-AWS OIDC Role에는 해당 ECR 저장소에 대한 로그인·이미지 Push 권한이 필요합니다.
-장기 AWS Access Key를 GitHub Secret에 저장하는 방식은 사용하지 않습니다.
-
-## ECR Push 후 Manifest 자동 갱신
-
-`main` 브랜치 Push가 성공하면 Workflow가 다음 작업을 자동 수행합니다.
-
-```text
-테스트 → 멀티플랫폼 이미지 빌드 → ECR Push
-                              ↓
-             my-k8s-manifests/monolith/frontend.yml 갱신
-                              ↓
-                    Manifest 저장소 Push
-                              ↓
-                         Argo CD Sync
-```
-
-App Repo의 GitHub 저장소에 다음 Secret을 추가해야 합니다.
-
-```text
-MANIFEST_REPO_TOKEN
-```
-
-Secret 등록 위치는 `yundo-main/my-app`입니다. `my-k8s-manifests` 저장소가
-아닙니다. 현재 Workflow가 App Repo에서 실행되기 때문에 App Repo의 Secret을
-사용해 ECR Push와 Manifest Repo Push를 수행합니다.
-
-필요한 Secret:
+이 저장소에서 직접 필요한 설정은 GitHub Secret 2개입니다.
 
 | Secret | 용도 |
 |---|---|
-| `AWS_GITHUB_ACTIONS_ROLE_ARN` | GitHub Actions의 AWS·ECR 접근 |
-| `MANIFEST_REPO_TOKEN` | `my-k8s-manifests`에 이미지 태그 Commit·Push |
+| `AWS_GITHUB_ACTIONS_ROLE_ARN` | GitHub OIDC로 AWS IAM Role을 받아 ECR에 접근 (장기 Access Key 미사용) |
+| `MANIFEST_REPO_TOKEN` | `my-k8s-manifests`에 이미지 태그 변경을 Commit·Push |
 
-### Secret 추가 방법
+발급·등록 절차(OIDC Provider, Role 신뢰 정책의 `sub`, PAT/Deploy Key)와 CI 실패
+메시지별 원인은 시나리오 문서가 단일 출처입니다. 이 README에서는 중복해서
+설명하지 않습니다.
 
-GitHub에서 App Repo `yundo-main/my-app`를 열고 다음 메뉴로 이동합니다.
+- [GitHub Actions AWS 인증과 Secret 등록 (1.6)](../CI-CD-SCENARIO.md#16-github-actions-aws-인증-설정-확인)
+- [CI/CD 변경 실습과 CI 실패 시 읽는 법 (2.10)](../CI-CD-SCENARIO.md#210-cicd-변경-실습)
+- [Ingress-NGINX·Argo CD 설치 (2.7)](../CI-CD-SCENARIO.md#27-ingress-nginxargo-cd-설치)
+- [Monolith 배포·Application 등록 (2.8)](../CI-CD-SCENARIO.md#28-monolith-배포)
+- [Argo CD GUI 확인 (8장)](../CI-CD-SCENARIO.md#8-argo-cd-gui로-배포-상태-확인)
 
-```text
-Settings → Secrets and variables → Actions → New repository secret
-```
-
-추가할 값:
-
-```text
-Name: AWS_GITHUB_ACTIONS_ROLE_ARN
-Value: arn:aws:iam::637423638906:role/<GitHubActions용Role>
-```
-
-AWS CLI로 Role ARN을 조회하는 방법:
-
-```bash
-aws sts get-caller-identity
-
-aws iam list-roles \
-  --query 'Roles[].{Name:RoleName,Arn:Arn}' \
-  --output table
-```
-
-GitHub 관련 Role만 조회:
-
-```bash
-aws iam list-roles \
-  --query 'Roles[?contains(RoleName, `GitHub`) || contains(RoleName, `github`)].{Name:RoleName,Arn:Arn}' \
-  --output table
-```
-
-Role 이름으로 ARN 조회:
-
-```bash
-ROLE_NAME="GitHubActionsECRRole"
-ROLE_ARN=$(aws iam get-role \
-  --role-name "$ROLE_NAME" \
-  --query 'Role.Arn' \
-  --output text)
-echo "$ROLE_ARN"
-```
-
-GitHub Secret 등록:
-
-```bash
-gh secret set AWS_GITHUB_ACTIONS_ROLE_ARN \
-  --repo yundo-main/my-app \
-  --body "$ROLE_ARN"
-```
-
-등록 확인:
+현재 상태를 빠르게 확인하는 명령은 다음과 같습니다.
 
 ```bash
 gh secret list --repo yundo-main/my-app
+gh run list --repo yundo-main/my-app --limit 3
 ```
-
-`aws iam get-role`에서 `NoSuchEntity`가 발생하면 GitHub OIDC용 IAM Role이 없는
-상태입니다. 다음 절차로 생성합니다.
-
-```bash
-aws iam list-open-id-connect-providers
-```
-
-OIDC Provider가 없으면 생성합니다.
-
-```bash
-aws iam create-open-id-connect-provider \
-  --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
-```
-
-`github-oidc-trust.json` 파일에 `yundo-main/my-app`의 `main` 브랜치만
-허용하는 Trust Policy를 저장한 뒤 Role을 생성합니다. Trust Policy의
-Federated 값은 다음 형식입니다.
-
-파일 생성:
-
-```bash
-cd devops/my-app
-nano github-oidc-trust.json
-```
-
-앞에서 설명한 Trust Policy JSON을 붙여넣고 다음 순서로 저장합니다.
-
-```text
-Control + O → Enter → Control + X
-```
-
-파일 확인:
-
-```bash
-python -m json.tool github-oidc-trust.json
-ls -l github-oidc-trust.json
-```
-
-```text
-arn:aws:iam::637423638906:oidc-provider/token.actions.githubusercontent.com
-```
-
-Role 생성과 ECR 권한 연결:
-
-```bash
-ROLE_NAME="github-actions-ecr"
-
-aws iam create-role \
-  --role-name "$ROLE_NAME" \
-  --assume-role-policy-document file://github-oidc-trust.json
-
-aws iam attach-role-policy \
-  --role-name "$ROLE_NAME" \
-  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
-```
-
-Role ARN을 다시 조회하고 Secret을 등록합니다.
-
-```bash
-ROLE_ARN=$(aws iam get-role \
-  --role-name "$ROLE_NAME" \
-  --query 'Role.Arn' \
-  --output text)
-
-gh secret set AWS_GITHUB_ACTIONS_ROLE_ARN \
-  --repo yundo-main/my-app \
-  --body "$ROLE_ARN"
-```
-
-```text
-Name: MANIFEST_REPO_TOKEN
-Value: my-k8s-manifests에 Push 권한이 있는 GitHub Fine-grained PAT
-```
-
-PAT는 `yundo-main/my-k8s-manifests` 저장소만 선택하고,
-`Repository permissions → Contents → Read and write`를 부여합니다.
-
-GitHub CLI로 추가하려면:
-
-```bash
-gh secret set AWS_GITHUB_ACTIONS_ROLE_ARN --repo yundo-main/my-app
-gh secret set MANIFEST_REPO_TOKEN --repo yundo-main/my-app
-gh secret list --repo yundo-main/my-app
-```
-
-이 Token은 `yundo-main/my-k8s-manifests` 저장소의 `Contents: Read and write`
-권한이 있어야 합니다. Token은 Workflow 로그에 출력하지 않으며 GitHub Secret으로만
-사용합니다.
-
-자동 갱신 대상 파일은 다음과 같습니다.
-
-```text
-my-k8s-manifests/monolith/frontend.yml
-```
-
-자동 갱신 후 확인:
-
-```bash
-kubectl get application my-app-monolith -n argocd
-kubectl rollout status deployment/fastcgi-backend
-kubectl get deployment fastcgi-backend \
-  -o jsonpath='{.spec.template.spec.containers[0].image}{"\\n"}'
-```
-
-## Argo CD GUI 확인
-
-Argo CD GUI는 기본적으로 외부에 공개되지 않으므로 Port Forward로 접속합니다.
-
-```bash
-kubectl port-forward svc/argocd-server -n argocd 8080:443
-```
-
-브라우저에서 다음 주소를 엽니다.
-
-```text
-https://localhost:8080
-```
-
-관리자 비밀번호 확인:
-
-```bash
-kubectl -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath='{.data.password}' | base64 --decode
-```
-
-로그인 후 `Applications → my-app-monolith`에서 다음 상태를 확인합니다.
-
-```text
-Sync Status: Synced
-Health Status: Healthy
-```
-
-Port Forward를 종료하려면 실행 중인 터미널에서 `Ctrl+C`를 누릅니다.
 
 ## 단일 플랫폼 로컬 테스트
 
