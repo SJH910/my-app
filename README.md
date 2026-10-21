@@ -218,8 +218,8 @@ Argo CD가 그 변경을 감지해 EKS에 배포합니다.
 현재 상태를 빠르게 확인하는 명령은 다음과 같습니다.
 
 ```bash
-gh secret list --repo yundo-main/my-app
-gh run list --repo yundo-main/my-app --limit 3
+gh secret list --repo SJH910/my-app
+gh run list --repo SJH910/my-app --limit 3
 ```
 
 ## 단일 플랫폼 로컬 테스트
