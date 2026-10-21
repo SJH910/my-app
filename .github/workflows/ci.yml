@@ -22,7 +22,7 @@ jobs:
     env:
       AWS_REGION: ap-northeast-2
       ECR_REPOSITORY: fastapi-backend
-      AWS_ACCOUNT_ID: "637423638906"
+      AWS_ACCOUNT_ID: "938917088179"
       MANIFEST_REPOSITORY: SJH910/my-k8s-manifests
 
     steps:

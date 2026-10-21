@@ -100,7 +100,7 @@ aws ecr get-login-password \
   --region ap-northeast-2 | \
 docker login \
   --username AWS \
-  --password-stdin 637423638906.dkr.ecr.ap-northeast-2.amazonaws.com
+  --password-stdin 938917088179.dkr.ecr.ap-northeast-2.amazonaws.com
 ```
 
 ### 3. ECR 이미지 빌드 및 Push
@@ -112,8 +112,8 @@ cd devops/my-app
 
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -t 637423638906.dkr.ecr.ap-northeast-2.amazonaws.com/fastapi-backend:v1.0 \
-  -t 637423638906.dkr.ecr.ap-northeast-2.amazonaws.com/fastapi-backend:latest \
+  -t 938917088179.dkr.ecr.ap-northeast-2.amazonaws.com/fastapi-backend:v1.0 \
+  -t 938917088179.dkr.ecr.ap-northeast-2.amazonaws.com/fastapi-backend:latest \
   --push \
   .
 ```
@@ -131,7 +131,7 @@ docker buildx build \
 
 ```bash
 docker buildx imagetools inspect \
-  637423638906.dkr.ecr.ap-northeast-2.amazonaws.com/fastapi-backend:v1.0
+  938917088179.dkr.ecr.ap-northeast-2.amazonaws.com/fastapi-backend:v1.0
 ```
 
 다음 플랫폼이 표시되어야 합니다.
@@ -174,7 +174,7 @@ Deployment의 이미지를 ECR 이미지로 지정합니다.
 ```yaml
 containers:
   - name: backend
-    image: 637423638906.dkr.ecr.ap-northeast-2.amazonaws.com/fastapi-backend:v1.0
+    image: 938917088179.dkr.ecr.ap-northeast-2.amazonaws.com/fastapi-backend:v1.0
 ```
 
 Kubernetes가 노드의 아키텍처에 맞는 이미지를 자동으로 선택합니다.
